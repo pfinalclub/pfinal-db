@@ -18,6 +18,7 @@
 	namespace pf\db;
 	
 	
+	use mysql_xdevapi\Exception;
 	use pf\config\Config;
 	
 	class Query
@@ -110,5 +111,59 @@
 		{
 			$this->model = $model;
 		}
+		
+		public function getTable()
+		{
+			return $this->table;
+		}
+		
+		public function filterTableField(array $data)
+		{
+			$new = [];
+			if (is_array($data)) {
+				foreach ((array)$data as $name => $value) {
+					if (key_exists($name, $this->fields)) {
+						$new[$name] = $value;
+					}
+				}
+			}
+			
+			return $new;
+		}
+		
+		
+		public function getFields()
+		{
+			static $cache = [];
+			if (empty($this->table)) {
+				return [];
+			}
+			
+			if (!empty($cache[$this->table])) {
+				return $cache[$this->table];
+			}
+			
+			// 缓存字段
+			$data = Config::get('app.debug') ? [] : $this->cache($this->table);
+			if (empty($data)) {
+				$sql = "show columns from ".$this->table;
+				if (!$result = $this->connection->query($sql)) {
+					throw new \Exception("获取{$this->table}表字段信息失败");
+				}
+				$data = [];
+				foreach ((array)$result as $res) {
+					$f['field'] = $res['Field'];
+					$f['type'] = $res['Type'];
+					$f['null'] = $res['Null'];
+					$f['field'] = $res['Field'];
+					$f['key'] = ($res['Key'] == "PRI" && $res['Extra']) || $res['Key'] == "PRI";
+					$f['default']         = $res['Default'];
+					$f['extra']           = $res['Extra'];
+					$data[$res['Field']] = $f;
+				}
+			}
+			
+		}
+		
 		
 	}

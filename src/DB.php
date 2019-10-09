@@ -35,7 +35,7 @@
 		{
 			static $isLoad = false;
 			if ($isLoad === false) {
-				$config = Config::getExName('database', ['write', 'read']);
+				$config = Config::getExtName('database', ['write', 'read']);
 				if (empty($config['write'])) {
 					$config['write'][] = Config::getExtName('database', ['write', 'read']);
 				}
