@@ -33,7 +33,8 @@
   "require": {
     "php": ">=7.0.0",
     "nancheng/pfinal-config": "dev-master",
-    "nancheng/pfinal-diropt": "dev-master"
+    "nancheng/pfinal-diropt": "dev-master",
+    "nancheng/pfinal-page": "dev-master"
   },
   "require-dev": {
     "phpunit/phpunit": "7.2"

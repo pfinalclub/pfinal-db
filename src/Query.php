@@ -20,6 +20,7 @@
 	
 	use mysql_xdevapi\Exception;
 	use pf\config\Config;
+	use pf\diropt\Diropt;
 	
 	class Query
 	{
@@ -157,13 +158,78 @@
 					$f['null'] = $res['Null'];
 					$f['field'] = $res['Field'];
 					$f['key'] = ($res['Key'] == "PRI" && $res['Extra']) || $res['Key'] == "PRI";
-					$f['default']         = $res['Default'];
-					$f['extra']           = $res['Extra'];
+					$f['default'] = $res['Default'];
+					$f['extra'] = $res['Extra'];
 					$data[$res['Field']] = $f;
 				}
+				$this->cache($this->table, $data);
 			}
+			$cache[$this->table] = $data;
 			
+			return $data;
 		}
 		
+		public function getPrimaryKey()
+		{
+			static $cache = [];
+			if (isset($cache[$this->table])) {
+				return $cache[$this->table];
+			}
+			$fields = $this->getFields($this->table);
+			foreach ($fields as $v) {
+				if ($v['key'] == 1) {
+					return $cache[$this->table] = $v['field'];
+				}
+			}
+		}
+		
+		public function cache($name, $data = null)
+		{
+			$dir = Config::get('database.cache_dir');
+			Diropt::create($dir);
+			$file = $dir.'/'.($name).'.php';
+			if (is_null($data)) {
+				$result = [];
+				if (is_file($file)) {
+					$result = unserialize(file_get_contents($file));
+				}
+				
+				return is_array($result) ? $result : [];
+			} else {
+				return file_put_contents($file, serialize($data));
+			}
+		}
+		
+		public function data($data)
+		{
+			$this->data = $data;
+			
+			return $this;
+		}
+		
+		public function toArray()
+		{
+			return $this->data;
+		}
+		
+		/**
+		 * 插入并获取自增主键
+		 * @param $data
+		 * @param string $action
+		 * @return bool
+		 */
+		public function insertGetId($data, $action = 'insert')
+		{
+			if ($result = $this->insert($data, $action)) {
+				return $this->connection->getInsertId();
+			} else {
+				return false;
+			}
+		}
+		
+		public function paginate($row, $pageNum = 10)
+		{
+			$obj = unserialize(serialize($this));
+		}
 		
 	}
