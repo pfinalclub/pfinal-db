@@ -35,8 +35,10 @@
     "nancheng/pfinal-config": "dev-master",
     "nancheng/pfinal-diropt": "dev-master",
     "nancheng/pfinal-page": "dev-master"
+
   },
   "require-dev": {
     "phpunit/phpunit": "7.2"
-  }
+  },
+  "minimum-stability": "dev"
 }

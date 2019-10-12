@@ -57,7 +57,7 @@
 		
 		protected function Migrate()
 		{
-			Db::execute('drop table if exists news');
+			DB::execute('drop table if exists news');
 			$sql
 				= <<<str
 CREATE TABLE if not exists `news` (
@@ -68,10 +68,10 @@ CREATE TABLE if not exists `news` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 str;
-			Db::execute($sql);
+			DB::execute($sql);
 			
 			//栏目表
-			Db::execute('drop table if exists category');
+			DB::execute('drop table if exists category');
 			$sql
 				= <<<str
 CREATE TABLE if not exists `category` (
@@ -80,21 +80,21 @@ CREATE TABLE if not exists `category` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8;
 str;
-			Db::execute($sql);
+			DB::execute($sql);
 			$data = [
 				['title' => 'pfinal', 'click' => 1, 'category_cid' => 1],
 				['title' => 'PFcms', 'click' => 2, 'category_cid' => 2],
 				['title' => 'PFinal社区', 'click' => 3, 'category_cid' => 1],
 			];
 			foreach ($data as $d) {
-				Db::table('news')->insert($d);
+				DB::table('news')->insert($d);
 			}
 			$data = [
 				['catname' => '新闻'],
 				['catname' => '汽车'],
 			];
 			foreach ($data as $d) {
-				Db::table('category')->insert($d);
+				DB::table('category')->insert($d);
 			}
 		}
 	}

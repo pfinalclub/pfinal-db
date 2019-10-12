@@ -19,6 +19,8 @@
 	
 	class Mysql implements DBInterface
 	{
+		use Connection;
+		
 		public function getDns()
 		{
 			return $dns = 'mysql:dbname='.$this->config['database'].';host='.$this->config['host'].';port='.$this->config['port'];

@@ -19,10 +19,12 @@
 	
 	
 	use mysql_xdevapi\Exception;
+	use pf\arr\PFarr;
 	use pf\config\Config;
 	use pf\diropt\Diropt;
+	use pf\page\Page;
 	
-	class Query
+	class Query implements \ArrayAccess, \Iterator
 	{
 		use ArrayAccessIterator;
 		protected $data = [];
@@ -227,9 +229,313 @@
 			}
 		}
 		
+		/**
+		 * 分页查询
+		 * @param $row
+		 * @param int $pageNum
+		 * @return $this
+		 */
 		public function paginate($row, $pageNum = 10)
 		{
 			$obj = unserialize(serialize($this));
+			Page::row($row)->pageNum($pageNum)->make($obj->count());
+			$res = $this->limit(Page::limit())->get();
+			$this->data($res ?: []);
+			
+			return $this;
 		}
+		
+		/**
+		 * 前台显示页码样式
+		 *
+		 * @return mixed
+		 */
+		public function links()
+		{
+			return new Page();
+		}
+		
+		public function execute($sql, array $params = [])
+		{
+			self::setSql($sql);
+			// TODO Middleware
+			// Middleware::web('database_execute', $this);
+			$result = $this->connection->execute($sql, $params, $this);
+			$this->build->reset();
+			
+			return $result;
+		}
+		
+		public function query($sql, array $params = [])
+		{
+			self::setSql($sql);
+			// TODO Middleware
+			// Middleware::web('database_query');
+			$data = $this->connection->query($sql, $params, $this);
+			$this->build->reset();
+			
+			return $data;
+		}
+		
+		
+		public function increment($field, $dec = 1)
+		{
+			$where = $this->build->parseWhere();
+			if (empty($where)) {
+				throw new Exception('缺少更新条件');
+			}
+			$sql = "UPDATE ".$this->getTable()." SET {$field}={$field}+$dec ".$where;
+			
+			return $this->execute($sql, $this->build->getUpdateParams());
+		}
+		
+		public function decrement($field, $dec = 1)
+		{
+			$where = $this->build->parseWhere();
+			if (empty($where)) {
+				throw new Exception('缺少更新条件');
+			}
+			$sql = "UPDATE ".$this->getTable()." SET {$field}={$field}-$dec ".$where;
+			
+			return $this->execute($sql, $this->build->getUpdateParams());
+		}
+		
+		public function update($data)
+		{
+			$data = $this->filterTableField($data);
+			if (empty($data)) {
+				throw new Exception('缺少更新数据');
+			}
+			foreach ((array)$data as $k => $v) {
+				$this->build->bindExpression('set', $k);
+				$this->build->bindParams('values', $v);
+			}
+			if (!$this->build->getBindExpression('where')) {
+				$pri = $this->getPrimaryKey();
+				if (isset($data[$pri])) {
+					$this->where($pri, $data[$pri]);
+				}
+			}
+			if (!$this->build->getBindExpression('where')) {
+				throw new Exception('没有更新条件不允许更新');
+			}
+			//$this->execute($this->build->update(), $this->build->getUpdateParams());
+			//var_dump($this->connection->getQueryLog());exit;
+			return $this->execute($this->build->update(), $this->build->getUpdateParams());
+		}
+		
+		public function delete($id = [])
+		{
+			if (!empty($id)) {
+				$this->whereIn($this->getPrimaryKey(), is_array($id) ? $id : explode(',', $id));
+			}
+			//必须有条件才可以删除
+			if ($this->build->getBindExpression('where')) {
+				return $this->execute($this->build->delete(), $this->build->getDeleteParams());
+			}
+			
+			return false;
+		}
+		
+		public function firstOrCreate($param, $data)
+		{
+			if (!$this->where(key($param), current($param))->first()) {
+				return $this->insert($data);
+			} else {
+				return false;
+			}
+		}
+		
+		public function insert($data, $action = 'insert')
+		{
+			$data = $this->filterTableField($data);
+			if (empty($data)) {
+				throw new Exception('没有数据用于插入');
+			}
+			foreach ($data as $k => $v) {
+				$this->build->bindExpression('field', "`$k`");
+				$this->build->bindExpression('values', '?');
+				$this->build->bindParams('values', $v);
+			}
+			
+			return $this->execute($this->build->$action(), $this->build->getInsertParams());
+		}
+		
+		public function where()
+		{
+			$args = func_get_args();
+			
+			if (is_array($args[0])) {
+				foreach ($args as $v) {
+					call_user_func_array([$this, 'where'], $v);
+				}
+			} else {
+				switch (count($args)) {
+					case 1:
+						$this->logic('AND')->build->bindExpression('where', $args[0]);
+						break;
+					case 2:
+						$this->logic('AND')->build->bindExpression('where', "{$args[0]} = ?");
+						$this->build->bindParams('where', $args[1]);
+						break;
+					case 3:
+						$this->logic('AND')->build->bindExpression('where', "{$args[0]} {$args[1]} ?");
+						$this->build->bindParams('where', $args[2]);
+						break;
+				}
+			}
+			
+			return $this;
+		}
+		
+		
+		public function logic($logic)
+		{
+			$expression = $this->build->getBindExpression('where');
+			if (empty($expression) || preg_match('/^\s*(OR|AND)\s*$/i', array_pop($expression))) {
+				return $this;
+			}
+			$this->build->bindExpression('where', trim($logic));
+			
+			return $this;
+		}
+		
+		/**
+		 * 替换数据
+		 * @param $data
+		 * @return mixed
+		 */
+		public function replace($data)
+		{
+			return $this->insert($data, 'replace');
+		}
+		
+		/**
+		 * 根据主键查找一条数据
+		 * @param $id
+		 * @return mixed
+		 */
+		public function find($id)
+		{
+			if ($id) {
+				$this->where($this->getPrimaryKey(), $id);
+				if ($data = $this->query($this->build->select(), $this->build->getSelectParams())) {
+					return $data ? $data[0] : [];
+				}
+			}
+		}
+		
+		/**
+		 * 查找一条数据
+		 * @return array
+		 */
+		public function first()
+		{
+			$this->limit(1);
+			$data = $this->query($this->build->select(), $this->build->getSelectParams());
+			
+			return $data ? $data[0] : [];
+		}
+		
+		/**
+		 * 查找一个字段
+		 * @param $field
+		 * @return mixed
+		 */
+		public function pluck($field)
+		{
+			$data = $this->query(
+				$this->build->select(),
+				$this->build->getSelectParams()
+			);
+			$result = $data ? $data[0] : [];
+			if (!empty($result)) {
+				return $result[$field];
+			}
+		}
+		
+		/**
+		 * 查找集合
+		 * @param array $field
+		 * @return mixed
+		 */
+		public function get(array $field = [])
+		{
+			if (!empty($field)) {
+				$this->field($field);
+			}
+			
+			return $this->query($this->build->select(), $this->build->getSelectParams());
+		}
+		
+		/**
+		 * 获取字段列表
+		 * @param $field
+		 * @return array
+		 */
+		public function lists($field)
+		{
+			$result = $this->query($this->build->select(), $this->build->getSelectParams());
+			$data = [];
+			if ($result) {
+				$field = explode(',', $field);
+				switch (count($field)) {
+					case 1:
+						foreach ($result as $row) {
+							$data[] = $row[$field[0]];
+						}
+						break;
+					case 2:
+						foreach ($result as $v) {
+							$data[$v[$field[0]]] = $v[$field[1]];
+						}
+						break;
+					default:
+						foreach ($result as $v) {
+							foreach ($field as $f) {
+								$data[$v[$field[0]]][$f] = $v[$f];
+							}
+						}
+						break;
+				}
+			}
+			
+			return $data;
+		}
+		
+		/**
+		 * 设置结果集字段
+		 * @param string|array $field 字段列表
+		 * @return $this
+		 */
+		public function field($field)
+		{
+			$field = is_array($field) ? $field : explode(',', $field);
+			foreach ((array)$field as $k => $v) {
+				$this->build->bindExpression('field', $v);
+			}
+			
+			return $this;
+		}
+		
+		public function limit()
+		{
+			$args = func_get_args();
+			$this->build->bindExpression(
+				'limit',
+				$args[0]." ".(empty($args[1]) ? '' : ",{$args[1]}")
+			);
+			
+			return $this;
+		}
+		
+		public function groupBy()
+		{
+			$this->build->bindExpression('groupBy', func_get_arg(0));
+			
+			return $this;
+		}
+		
+		//TODO
 		
 	}
