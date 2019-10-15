@@ -536,6 +536,278 @@
 			return $this;
 		}
 		
-		//TODO
+		public function having()
+		{
+			$args = func_get_args();
+			$this->build->bindExpression('having', $args[0].$args[1].' ? ');
+			$this->build->bindParams('having', $args[2]);
+			
+			return $this;
+		}
+		
+		public function orderBy()
+		{
+			$args = func_get_args();
+			$this->build->bindExpression(
+				'orderBy',
+				$args[0]." ".(empty($args[1]) ? ' ASC ' : " $args[1]")
+			);
+			
+			return $this;
+		}
+		
+		public function lock()
+		{
+			$this->build->bindExpression('lock', ' FOR UPDATE ');
+			
+			return $this;
+		}
+		
+		public function count($field = '*')
+		{
+			$this->build->bindExpression('field', "count($field) AS m");
+			//有分组时统计
+			if ($this->build->getBindExpression('groupBy')) {
+				return count($this->get());
+			}
+			$data = $this->get();
+			
+			return $data ? $data[0]['m'] : 0;
+		}
+		
+		public function max($field)
+		{
+			$this->build->bindExpression('field', "max({$field}) AS m");
+			$data = $this->first();
+			return intval($data ? $data['m'] : 0);
+		}
+		public function min($field)
+		{
+			$this->build->bindExpression('field', "min({$field}) AS m");
+			$data = $this->first();
+			return intval($data ? $data['m'] : 0);
+		}
+		public function avg($field)
+		{
+			$this->build->bindExpression('field', "avg({$field}) AS m");
+			$data = $this->first();
+			return intval($data ? $data['m'] : 0);
+		}
+		public function sum($field)
+		{
+			$this->build->bindExpression('field', "sum({$field}) AS m");
+			$data = $this->first();
+			return intval($data ? $data['m'] : 0);
+		}
+		/**
+		 * 设置条件
+		 *
+		 * @return $this
+		 */
+		public function whereNotEmpty()
+		{
+			$args = func_get_args();
+			if (is_array($args[0])) {
+				foreach ($args as $v) {
+					call_user_func_array([$this, 'whereNotEmpty'], $v);
+				}
+			} else {
+				switch (count($args)) {
+					case 1:
+						if ( ! empty($args[0])) {
+							$this->logic('AND')->build->bindExpression('where', $args[0]);
+						}
+						break;
+					case 2:
+						if ( ! empty($args[1])) {
+							$this->logic('AND')->build->bindExpression('where', "{$args[0]} = ?");
+							$this->build->bindParams('where', $args[1]);
+						}
+						break;
+					case 3:
+						if ( ! empty($args[2])) {
+							$this->logic('AND')->build->bindExpression('where', "{$args[0]} {$args[1]} ?");
+							$this->build->bindParams('where', $args[2]);
+						}
+						break;
+				}
+			}
+			return $this;
+		}
+		/**
+		 * 预准备whereRaw
+		 *
+		 * @param       $sql
+		 * @param array $params
+		 *
+		 * @return $this
+		 */
+		public function whereRaw($sql, array $params = [])
+		{
+			$this->logic('AND');
+			$this->build->bindExpression('where', $sql);
+			foreach ($params as $p) {
+				$this->build->bindParams('where', $p);
+			}
+			return $this;
+		}
+		/**
+		 * 查询或
+		 *
+		 * @return $this
+		 */
+		public function orWhere()
+		{
+			$this->logic('OR');
+			call_user_func_array([$this, 'where'], func_get_args());
+			return $this;
+		}
+		/**
+		 * 查询与
+		 *
+		 * @return $this
+		 */
+		public function andWhere()
+		{
+			$this->build->bindExpression('where', ' AND ');
+			call_user_func_array([$this, 'where'], func_get_args());
+			return $this;
+		}
+		public function whereNull($field)
+		{
+			$this->logic('AND');
+			$this->build->bindExpression('where', "$field IS NULL");
+			return $this;
+		}
+		public function whereNotNull($field)
+		{
+			$this->logic('AND');
+			$this->build->bindExpression('where', "$field IS NOT NULL");
+			return $this;
+		}
+		/**
+		 * in 查询
+		 *
+		 * @param $field
+		 * @param $params
+		 *
+		 * @return $this
+		 * @throws \Exception
+		 */
+		public function whereIn($field, $params)
+		{
+			if ( ! is_array($params) || empty($params)) {
+				throw  new Exception('whereIn 参数错误');
+			}
+			$this->logic('AND');
+			$where = '';
+			foreach ($params as $value) {
+				$where .= '?,';
+				$this->build->bindParams('where', $value);
+			}
+			$this->build->bindExpression(
+				'where',
+				" $field IN (".substr($where, 0, -1).")"
+			);
+			return $this;
+		}
+		public function whereNotIn($field, $params)
+		{
+			if ( ! is_array($params) || empty($params)) {
+				throw  new Exception('whereIn 参数错误');
+			}
+			$this->logic('AND');
+			$where = '';
+			foreach ($params as $value) {
+				$where .= '?,';
+				$this->build->bindParams('where', $value);
+			}
+			$this->build->bindExpression('where', " $field NOT IN (".substr($where, 0, -1).")");
+			return $this;
+		}
+		public function whereBetween($field, $params)
+		{
+			if ( ! is_array($params) || empty($params)) {
+				throw  new Exception('whereIn 参数错误');
+			}
+			$this->logic('AND');
+			$this->build->bindExpression('where', " $field BETWEEN  ? AND ? ");
+			$this->build->bindParams('where', $params[0]);
+			$this->build->bindParams('where', $params[1]);
+			return $this;
+		}
+		public function whereNotBetween($field, $params)
+		{
+			if ( ! is_array($params) || empty($params)) {
+				throw  new Exception('whereIn 参数错误');
+			}
+			$this->logic('AND');
+			$this->build->bindExpression('where', " $field NOT BETWEEN  ? AND ? ");
+			$this->build->bindParams('where', $params[0]);
+			$this->build->bindParams('where', $params[1]);
+			return $this;
+		}
+		/**
+		 * 多表内连接
+		 *
+		 * @return $this
+		 */
+		public function join()
+		{
+			$args = func_get_args();
+			$this->build->bindExpression('join', " INNER JOIN ".$this->getPrefix()."{$args[0]} {$args[0]} ON {$args[1]} {$args[2]} {$args[3]}");
+			return $this;
+		}
+		/**
+		 * 多表左外连接
+		 *
+		 * @return $this
+		 */
+		public function leftJoin()
+		{
+			$args = func_get_args();
+			$this->build->bindExpression('join', " LEFT JOIN ".$this->getPrefix()."{$args[0]} {$args[0]} ON {$args[1]} {$args[2]} {$args[3]}");
+			return $this;
+		}
+		/**
+		 * 多表右外连接
+		 *
+		 * @return $this
+		 */
+		public function rightJoin()
+		{
+			$args = func_get_args();
+			$this->build->bindExpression('join', " RIGHT JOIN ".$this->getPrefix()."{$args[0]} {$args[0]} ON {$args[1]} {$args[2]} {$args[3]}");
+			return $this;
+		}
+		/**
+		 * 魔术方法
+		 *
+		 * @param $method
+		 * @param $params
+		 *
+		 * @return mixed
+		 */
+		public function __call($method, $params)
+		{
+			if (substr($method, 0, 5) == 'getBy') {
+				$field = preg_replace('/.[A-Z]/', '_\1', substr($method, 5));
+				$field = strtolower($field);
+				return $this->where($field, current($params))->first();
+			}
+			return call_user_func_array([$this->connection, $method], $params);
+		}
+		/**
+		 * 获取查询参数
+		 *
+		 * @param $type where field等
+		 *
+		 * @return mixed
+		 */
+		public function getQueryParams($type)
+		{
+			return $this->build->getBindExpression($type);
+		}
+		
 		
 	}
